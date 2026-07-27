@@ -1,0 +1,21 @@
+# HiDF 原始資料
+dataset/
+metadata.csv
+
+# 程式產生的資料集
+dataset_vit/
+dataset_vit_retrain/
+
+# 自建 Retrain 原始資料
+retrain_raw/
+
+# 模型權重
+*.pth
+*.pt
+
+# Jupyter 暫存
+.ipynb_checkpoints/
+
+# Python 暫存
+__pycache__/
+*.pyc
