@@ -187,3 +187,7 @@ https://doi.org/10.1145/3711896.3737399
 - Ultralytics：https://github.com/ultralytics/ultralytics
 
 YOLO-Face 及 Ultralytics 均為其各自作者或權利人的專案。本專案與上述專案沒有隸屬或官方合作關係。
+
+## License
+
+本專案採用 [MIT License](LICENSE) 授權。
