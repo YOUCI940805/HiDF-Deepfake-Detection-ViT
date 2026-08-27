@@ -1,6 +1,123 @@
 # HiDF Deepfake Detection with Vision Transformer
 
-本專案使用 Vision Transformer（ViT）進行 Deepfake 人臉影像二分類，包含 HiDF 資料前處理、模型訓練、自建資料整理、Retrain 與最終測試。
+本專案使用 Vision Transformer（ViT）進行 Deepfake 人臉影像二元分類，涵蓋 HiDF 資料前處理、模型訓練、自建資料整理、Retrain 與最終測試的完整流程。影像先經 YOLO 人臉偵測與裁切，再輸入 `vit_base_patch16_224` 進行 Real／Fake 分類。
+
+## 關於本儲存庫
+
+**這是大學三年級專題的第一版實作紀錄，主要目的是保存當時的研究流程與成果。** 閱讀前請留意以下幾點：
+
+- 本儲存庫的程式碼是專題完成後重新整理的版本，與當時實際執行的程式碼不完全相同。
+- 原始資料集、模型權重與訓練輸出均已不存在，**無法重現報告中的實驗結果**。
+- Notebook 中的參數已對齊 `docs/project_report.pdf` 記錄的實驗設定，但部分流程仍存在差異，詳見〈程式碼與報告的差異〉。
+- 報告中使用的獨立測試流程（399 張實際情境影像）**未收錄於本儲存庫**。
+- `requirements.txt` 未鎖定套件版本，當時的執行環境已無紀錄。
+
+完整的研究背景、方法與結果分析請參考 [`docs/project_report.pdf`](docs/project_report.pdf)。
+
+## 實驗結果
+
+以下數據取自 `docs/project_report.pdf`，由當時的程式碼版本產生。
+
+### 各階段模型表現
+
+| 模型階段 | 測試資料 | 測試數量 | Accuracy | Weighted F1 |
+|---|---|---|---|---|
+| 主訓練 | HiDF 測試集 | 501 | 0.9042 | 0.9038 |
+| Retrain 後 | 額外實際情境資料 | 399 | 0.8596 | 0.8604 |
+
+兩個階段使用的測試資料來源與類別分布不同，因此上述數值**不能直接用來判定 Retrain 使模型表現提升或下降**。主訓練結果反映模型在 HiDF 同來源測試集上的分類能力，Retrain 後結果則反映模型在另一組實際情境影像上的表現。
+
+### 主訓練模型（HiDF 測試集，501 張）
+
+| 類別 | Precision | Recall | F1-score | Support |
+|---|---|---|---|---|
+| Fake | 0.9591 | 0.8440 | 0.8979 | 250 |
+| Real | 0.8612 | 0.9641 | 0.9098 | 251 |
+| Accuracy | — | — | 0.9042 | 501 |
+| Macro avg | 0.9102 | 0.9041 | 0.9038 | 501 |
+
+混淆矩陣：
+
+| 真實＼預測 | Fake | Real |
+|---|---|---|
+| **Fake** | 211 | 39 |
+| **Real** | 9 | 242 |
+
+模型在 HiDF 測試集對 Real 類別的辨識較穩定，但仍有 39 張 Fake 被誤判為 Real。
+
+### Retrain 後模型（實際情境資料，399 張）
+
+| 類別 | Precision | Recall | F1-score | Support |
+|---|---|---|---|---|
+| Fake | 0.9042 | 0.8839 | 0.8939 | 267 |
+| Real | 0.7754 | 0.8106 | 0.7926 | 132 |
+| Accuracy | — | — | 0.8596 | 399 |
+| Macro avg | 0.8398 | 0.8473 | 0.8433 | 399 |
+
+混淆矩陣：
+
+| 真實＼預測 | Fake | Real |
+|---|---|---|
+| **Fake** | 236 | 31 |
+| **Real** | 25 | 107 |
+
+模型對 Fake 類別仍具一定辨識能力，但部分 Real 影像可能因光線、壓縮、拍攝品質或裁切差異而被誤判為 Fake。此測試集的類別分布不平衡，Accuracy 需搭配各類別 F1-score 一併解讀。
+
+## 研究流程
+
+| 階段 | 輸入 | 主要處理 | 輸出 |
+|---|---|---|---|
+| 資料整理 | HiDF／自建影像 | 類別平衡與資料切分 | Train／Validation／Test |
+| 人臉前處理 | 原始影像 | YOLO 偵測、裁切、尺寸統一 | 人臉影像 |
+| 模型訓練 | 人臉影像 | ViT 主訓練與 Retrain | 最佳模型權重 |
+| 模型評估 | 獨立測試資料 | 分類預測與指標計算 | 報表與混淆矩陣 |
+
+## 資料組成
+
+| 階段 | 資料來源 | 用途 | 數量 | 切分方式 |
+|---|---|---|---|---|
+| 主訓練 | HiDF | 訓練、驗證、測試 | 5,000 | 8:1:1 |
+| Retrain | 自行蒐集資料 | 追加訓練、驗證 | 300 | 約 80%／20% |
+| 額外測試 | 實際情境影像 | 獨立測試 | 399 | 不參與訓練 |
+
+自行蒐集資料中的 Real 類別以手機拍攝的原況照片為主，Fake 類別則由 X、Facebook 等公開網路平台蒐集。上述網路影像僅用於課程研究與模型測試，不在本儲存庫中重新散布。
+
+## 實驗設定
+
+以下設定取自 `docs/project_report.pdf`，為當時實際執行的實驗參數。
+
+### 主訓練
+
+| 項目 | 設定 | 項目 | 設定 |
+|---|---|---|---|
+| 模型 | vit_base_patch16_224 | Epoch | 30 |
+| Batch size | 8 | Image size | 224×224 |
+| Learning rate | 1×10⁻⁴ | Weight decay | 0.01 |
+| Optimizer | AdamW | Loss | CrossEntropyLoss |
+| Seed | 42 | 輸出權重 | best_vit_model.pth |
+
+### Retrain
+
+| 項目 | 設定 | 項目 | 設定 |
+|---|---|---|---|
+| 基礎權重 | best_vit_model.pth | Epoch | 12 |
+| Batch size | 8 | Image size | 224×224 |
+| Learning rate | 3×10⁻⁵ | Weight decay | 0.0001 |
+| Optimizer | AdamW | Loss | CrossEntropyLoss |
+| 輸出權重 | best_vit_model_retrain.pth | 資料用途 | Train／Validation |
+
+Retrain 並非從隨機權重重新訓練，而是載入主訓練完成的 `best_vit_model.pth` 進行追加訓練，目的是讓模型接觸不同於 HiDF 的影像來源與拍攝條件。
+
+## 程式碼與報告的差異
+
+本儲存庫的程式碼為事後整理版本，與報告記錄的實驗流程存在以下差異。這些差異均予以保留，不另行修改程式碼，以避免產生從未實際執行過的內容。
+
+| 項目 | 報告記錄 | 本儲存庫程式碼 |
+|---|---|---|
+| Retrain 資料切分 | 300 張分為 Train／Validation（約 80%／20%） | `03` 切分為 Train／Validation／Test（8:1:1） |
+| 最終測試資料 | 399 張獨立實際情境影像 | `04` 於 `dataset_vit_retrain/test` 評估，該流程未收錄 |
+| Retrain 資料增強 | 提及仿射變換、銳利度調整 | `04` 實作為 RandomResizedCrop、水平翻轉、ColorJitter、GaussianBlur、JPEG 壓縮、白平衡 |
+| 主訓練測試集張數 | 501 張（Fake 250／Real 251） | 依現行切分邏輯計算應為 500 張 |
 
 ## 專案流程
 
@@ -11,51 +128,44 @@
 3. `03_prepare_retrain_dataset.ipynb`
 4. `04_retrain_and_test_vit.ipynb`
 
-## Notebook 說明
-
 ### 01_prepare_hidf_dataset.ipynb
-
-主要功能：
 
 - 讀取 HiDF 原始 Real 與 Fake 圖片
 - 使用 `metadata.csv` 取得人物與族群資訊
-- 平衡抽樣 Real 與 Fake 圖片
+- 依族群平衡抽樣 Real 與 Fake 圖片
 - 切分 Train、Validation 與 Test
-- 使用 YOLO 偵測並裁切人臉
+- 使用 YOLO 偵測並裁切最大人臉
 - 產生 `dataset_vit`
+
+YOLO 找不到人臉的圖片會被跳過並寫入 `hidf_failed_images.csv`，因此各 split 實際輸出的張數會少於依比例計算的數量。
 
 ### 02_train_vit_hidf.ipynb
 
-主要功能：
-
 - 載入 `dataset_vit`
-- 建立 Vision Transformer 模型
-- 執行模型訓練與驗證
-- 儲存最佳模型權重
+- 建立 Vision Transformer 模型（ImageNet 預訓練）
+- 執行模型訓練與驗證，訓練增強僅使用水平翻轉
+- **依驗證集 Accuracy 儲存最佳模型權重**
 - 在 Test 資料集上進行評估
 
 ### 03_prepare_retrain_dataset.ipynb
 
-主要功能：
-
 - 讀取自行蒐集的 Real 與 Fake 圖片
-- 切分 Train、Validation 與 Test
+- 依類別分層切分 Train、Validation 與 Test
+- 寫出切分紀錄 `retrain_split_manifest.csv`
 - 使用 YOLO 偵測並裁切人臉
 - 產生 `dataset_vit_retrain`
 
+原始圖片只讀取，不移動也不刪除。
+
 ### 04_retrain_and_test_vit.ipynb
-
-本階段載入已使用 HiDF 完成初始訓練的 ViT 模型，並使用自行建立的 Real／Fake 人臉資料進行 Retrain。
-
-Retrain 的目的，是讓模型進一步適應與 HiDF 不同的影像來源與拍攝條件，觀察模型經過追加訓練後，在自建資料上的辨識表現。
-
-主要功能：
 
 - 載入第一次訓練完成的 ViT 模型權重
 - 使用自建資料進行追加訓練
-- 使用資料增強提高模型對影像變化的適應能力
-- 根據驗證集 Macro F1 儲存最佳模型
-- 在獨立 Test 資料集上進行最終評估
+- 套用資料增強提高模型對影像變化的適應能力
+- **依驗證集 Accuracy 儲存最佳模型權重**
+- 在 Test 資料集上進行最終評估
+
+測試圖片已由 `03` 完成裁臉，此階段不會重複執行 YOLO。
 
 ## 安裝環境
 
@@ -73,6 +183,8 @@ pip install -r requirements.txt
 ```
 
 如果需要使用 NVIDIA GPU，請先依照 PyTorch 官方網站提供的指令安裝與 CUDA 相容的 PyTorch 版本。
+
+`requirements.txt` 未指定版本號。當時的實際執行環境已無紀錄，因此不補填版本，以免與真實情況不符。若要執行本專案，可能需要自行處理套件版本相容問題。
 
 ## 資料準備
 
@@ -135,6 +247,8 @@ project/
 ├── 02_train_vit_hidf.ipynb
 ├── 03_prepare_retrain_dataset.ipynb
 ├── 04_retrain_and_test_vit.ipynb
+├── docs/
+│   └── project_report.pdf
 ├── README.md
 ├── requirements.txt
 ├── metadata.csv
@@ -151,9 +265,25 @@ project/
 
 - 執行前請確認各 Notebook 中的路徑設定。
 - GitHub 版本預設使用相對路徑。
-- 重新建立資料集時，請注意 `OVERWRITE_OUTPUT` 設定。
-- 啟用覆寫可能會刪除原本已產生的資料夾。
+- `01` 的 `OVERWRITE_OUTPUT` 預設為 `False`，`03` 預設為 `True`。後者會在執行時直接刪除既有的輸出資料夾。
 - 模型訓練時間會依 GPU、資料量及訓練參數而有所不同。
+
+## 已知限制
+
+- 兩階段模型未使用同一組獨立測試集，因此無法直接證明 Retrain 的改善效果。
+- 額外測試資料的 Real／Fake 類別數量不平衡，Accuracy 需搭配各類別 F1-score 解讀。
+- 網路 Fake 影像來源分散，生成方法與平台壓縮方式未完整標註。
+- 原始實驗資料遺失，無法重新執行完全相同的切分與訓練流程。
+- 研究範圍限於單張人臉影像，結果不能直接推論至影片型 Deepfake。
+- 資料切分在圖片層級進行 shuffle。HiDF 的 Fake 影像檔名格式為 `{face_id}_{body_id}`，同一個 `face_id` 可能出現在多張 Fake 影像中，因此 Train 與 Test 之間可能存在部分身分重疊。
+
+## 未來方向
+
+- 重新建立具完整來源紀錄與固定切分的資料集，以提高實驗可再現性。
+- 在同一獨立測試集上比較 Retrain 前後模型，量化追加訓練的實際效果。
+- 加入跨資料集測試，評估模型面對不同 Deepfake 生成方法時的泛化能力。
+- 進一步比較不同人臉框擴張比例與裁切策略對分類結果的影響。
+- 擴充至影片資料，納入時間序列與影格一致性資訊。
 
 ## 第三方資料與模型來源
 
@@ -172,7 +302,7 @@ project/
 
 Chaewon Kang, Seoyoon Jeong, Jonghyun Lee, Daejin Choi,
 Simon S. Woo, and Jinyoung Han.
-“HiDF: A Human-Indistinguishable Deepfake Dataset.”
+"HiDF: A Human-Indistinguishable Deepfake Dataset."
 Proceedings of the 31st ACM SIGKDD Conference on Knowledge
 Discovery and Data Mining, 2025.
 https://doi.org/10.1145/3711896.3737399
